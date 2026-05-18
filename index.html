@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 多國語言素食辨識助手</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f5f7f8; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2e7d32; font-size: 24px; margin-bottom: 20px; }
+        .upload-section { display: flex; flex-direction: column; align-items: center; gap: 15px; border: 2px dashed #a5d6a7; padding: 30px; border-radius: 12px; background: #f1f8e9; cursor: pointer; }
+        #preview { max-width: 100%; max-height: 250px; border-radius: 8px; display: none; margin-top: 15px; }
+        button { background-color: #2e7d32; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; }
+        button:disabled { background-color: #b0bec5; }
+        #result { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; background: #fff; border: 1px solid #e0e0e0; line-height: 1.6; }
+        .loading { text-align: center; display: none; color: #666; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌱 AI 多國語言素食辨識</h1>
+    
+    <!-- 拍照/上傳區塊 -->
+    <div class="upload-section" onclick="document.getElementById('fileInput').click()">
+        <span style="font-size: 48px;">📷</span>
+        <p style="margin: 0; font-weight: bold; color: #555;">點擊拍照或上傳成分表/菜單</p>
+        <p style="margin: 0; font-size: 12px; color: #888;">支援各國語言（日、韓、英、泰等）</p>
+        <input type="file" id="fileInput" accept="image/*" capture="environment" style="display: none;">
+        <img id="preview" alt="圖片預覽">
+    </div>
+
+    <button id="analyzeBtn" disabled>開始 AI 辨識</button>
+
+    <div class="loading" id="loadingText">⏳ AI 正在全力分析各國成分，請稍候...</div>
+    <div id="result"></div>
+</div>
+
+<script>
+    // ⚠️ 請在此處替換成您的 Gemini API Key
+    const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE"; 
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loadingText = document.getElementById('loadingText');
+    const resultDiv = document.getElementById('result');
+
+    let base64Image = "";
+
+    // 處理圖片上傳與預覽
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            preview.src = event.target.result;
+            preview.style.display = 'block';
+            analyzeBtn.disabled = false;
+            // 擷取純 base64 字串
+            base64Image = event.target.result.split(',')[1];
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 點擊辨識按鈕
+    analyzeBtn.addEventListener('click', async () => {
+        if (!base64Image) return;
+
+        // 顯示載入狀態
+        loadingText.style.display = 'block';
+        resultDiv.style.display = 'none';
+        analyzeBtn.disabled = true;
+
+        // 設定專門給多國語言素食辨識的 AI Prompt
+        const promptText = `你是一位精通多國語言的素食成分專家。請仔細分析這張圖片中的所有文字（它可能是日文、韓文、英文、泰文或中文等）。
+        請依據以下標準判斷並用【繁體中文】回報結果：
+        1. 判定分類：【全素/純素】、【蛋奶素】、【奶素】、【蛋素】、【植物五辛素】或【非素食（葷食）】。
+        2. 原因說明：如果是「非素食」或含有特定過敏原，請明確指出是哪個原文成分（附帶中文翻譯）踩到地雷。
+        3. 條列重點：用清晰的粗體標題與分行呈現，讓使用者一眼就能看懂。`;
+
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: promptText },
+                    {
+                        inlineData: {
+                            mimeType: "image/jpeg",
+                            data: base64Image
+                        }
+                    }
+                ]
+            }]
+        };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            // 解析 Gemini 回傳的 Markdown 文本
+            let aiResponse = data.candidates[0].content.parts[0].text;
+            
+            // 簡單將 Markdown 換行與粗體轉為 HTML 格式
+            aiResponse = aiResponse.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+            resultDiv.innerHTML = `<h3>🔍 AI 辨識結果：</h3>${aiResponse}`;
+            resultDiv.style.display = 'block';
+        } catch (error) {
+            console.error("API 錯誤:", error);
+            resultDiv.innerHTML = `<p style="color:red;">辨識失敗，請檢查 API Key 或網路連線。</p>`;
+            resultDiv.style.display = 'block';
+        } finally {
+            loadingText.style.display = 'none';
+            analyzeBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
