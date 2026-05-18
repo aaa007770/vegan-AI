@@ -1,6 +1,19 @@
-// api/analyze.js (適用於 Vercel)
+// api/analyze.js
 export default async function handler(req, res) {
-    // 限制只能用 POST 請求
+    // 🟢 加上 CORS 允許標頭，防止瀏覽器阻擋連線 (Failed to fetch)
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader(
+        'Access-Control-Allow-Headers',
+        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+    );
+
+    // 🟢 處理瀏覽器的預檢請求 (Preflight Request)
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
@@ -8,8 +21,13 @@ export default async function handler(req, res) {
     try {
         const { base64Image, promptText } = req.body;
         
-        // 🔒 從 Vercel 後台安全取出環境變數，前端完全看不到
+        // 從 Vercel 後台安全取出環境變數
         const apiKey = process.env.GEMINI_API_KEY; 
+        
+        if (!apiKey) {
+            return res.status(500).json({ error: 'Vercel 後台尚未設定 GEMINI_API_KEY 環境變數。' });
+        }
+
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
         const payload = {
