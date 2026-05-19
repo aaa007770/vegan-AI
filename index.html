@@ -9,21 +9,27 @@
         .container { max-width: 500px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #2e7d32; font-size: 24px; margin-bottom: 20px; }
         
-        /* 安全環境提示標籤 */
         .safe-badge { display: flex; align-items: center; justify-content: center; gap: 5px; background: #e8f5e9; color: #2e7d32; padding: 8px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; font-weight: bold; border: 1px solid #c8e6c9; }
         
-        .upload-section { display: flex; flex-direction: column; align-items: center; gap: 15px; border: 2px dashed #a5d6a7; padding: 30px; border-radius: 12px; background: #f1f8e9; cursor: pointer; transition: background 0.2s; }
-        .upload-section:hover { background: #e8f5e9; }
-        #preview { max-width: 100%; max-height: 250px; border-radius: 8px; display: none; margin-top: 15px; }
+        /* 選擇模式區塊改為雙按鈕排版 */
+        .action-group { display: flex; gap: 12px; margin-bottom: 15px; }
+        .btn-action { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; border-radius: 12px; border: 2px dashed #a5d6a7; background: #f1f8e9; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+        .btn-action:hover { background: #e8f5e9; }
+        .btn-action:active { transform: scale(0.98); }
+        .btn-action span.icon { font-size: 32px; }
+        .btn-action span.text { font-weight: bold; color: #333; font-size: 14px; }
         
-        button { background-color: #2e7d32; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 20px; transition: background 0.2s; }
-        button:hover { background-color: #1b5e20; }
-        button:disabled { background-color: #b0bec5; cursor: not-allowed; }
+        /* 預覽區塊 */
+        .preview-container { text-align: center; margin-top: 10px; display: none; background: #fafafa; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; }
+        #preview { max-width: 100%; max-height: 250px; border-radius: 8px; }
+        
+        /* 開始辨識按鈕 */
+        #analyzeBtn { background-color: #2e7d32; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
+        #analyzeBtn:hover { background-color: #1b5e20; }
+        #analyzeBtn:disabled { background-color: #b0bec5; cursor: not-allowed; }
         
         #result { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; background: #fafafa; border: 1px solid #e0e0e0; line-height: 1.7; }
         .loading { text-align: center; display: none; color: #2e7d32; margin-top: 15px; font-weight: bold; }
-        
-        /* 辨識結果美化 */
         .result-box { border-left: 5px solid #2e7d32; padding-left: 12px; margin-top: 10px; font-size: 15px; }
     </style>
 </head>
@@ -36,11 +42,22 @@
         <span>🛡️</span> 雲端安全加密連線中（無金鑰外洩風險）
     </div>
     
-    <div class="upload-section" onclick="document.getElementById('fileInput').click()">
-        <span style="font-size: 48px;">📷</span>
-        <p style="margin: 0; font-weight: bold; color: #555;">點擊拍照或上傳成分表/菜單</p>
-        <p style="margin: 0; font-size: 12px; color: #888;">支援各國語言（日、韓、英、泰等）</p>
-        <input type="file" id="fileInput" accept="image/*" capture="environment" style="display: none;">
+    <div class="action-group">
+        <div class="btn-action" onclick="document.getElementById('cameraInput').click()">
+            <span class="icon">📷</span>
+            <span class="text">打開相機拍照</span>
+        </div>
+        <div class="btn-action" onclick="document.getElementById('galleryInput').click()">
+            <span class="icon">🖼️</span>
+            <span class="text">從相簿選照片</span>
+        </div>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+    <input type="file" id="galleryInput" accept="image/*" style="display: none;">
+
+    <div class="preview-container" id="previewContainer">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #666; font-weight: bold;">📸 已選取圖片預覽：</p>
         <img id="preview" alt="圖片預覽">
     </div>
 
@@ -51,49 +68,58 @@
 </div>
 
 <script>
-    const fileInput = document.getElementById('fileInput');
+    const cameraInput = document.getElementById('cameraInput');
+    const galleryInput = document.getElementById('galleryInput');
+    const previewContainer = document.getElementById('previewContainer');
     const preview = document.getElementById('preview');
     const analyzeBtn = document.getElementById('analyzeBtn');
     const loadingText = document.getElementById('loadingText');
     const resultDiv = document.getElementById('result');
 
-    // 🟢 呼叫相對路徑的 Vercel Serverless Function 後端
-    const API_URL = "https://vegan-ai-one.vercel.app/api/analyze";
+    // 🟢 請替換成您在上一課測試成功、會回傳正常結果的 Vercel 後端完整網址
+    const API_URL = "https://你的專案名稱.vercel.app/api/analyze"; 
     let base64Image = "";
 
-    // 處理圖片上傳與預覽
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
+    // 處理圖片轉換與顯示的共同函式
+    function handleFileSelect(file) {
         if (!file) return;
 
         const reader = new FileReader();
         reader.onload = function(event) {
             preview.src = event.target.result;
-            preview.style.display = 'block';
-            analyzeBtn.disabled = false;
-            // 擷取純 base64 字串
-            base64Image = event.target.result.split(',')[1];
+            previewContainer.style.display = 'block'; // 顯示預覽外框
+            analyzeBtn.disabled = false;             // 啟用辨識按鈕
+            base64Image = event.target.result.split(',')[1]; // 擷取 Base64 數據
         };
         reader.readAsDataURL(file);
+    }
+
+    // 監聽相機拍照的變更
+    cameraInput.addEventListener('change', function(e) {
+        handleFileSelect(e.target.files[0]);
+        galleryInput.value = ""; // 清空另一個輸入框的暫存
     });
 
-    // 點擊辨識按鈕
+    // 監聽相簿選擇的變更
+    galleryInput.addEventListener('change', function(e) {
+        handleFileSelect(e.target.files[0]);
+        cameraInput.value = ""; // 清空另一個輸入框的暫存
+    });
+
+    // 點擊辨識按鈕事件
     analyzeBtn.addEventListener('click', async () => {
         if (!base64Image) return;
 
-        // 顯示載入狀態
         loadingText.style.display = 'block';
         resultDiv.style.display = 'none';
         analyzeBtn.disabled = true;
 
-        // 設定專門給多國語言素食辨識的 AI Prompt
         const promptText = `你是一位精通多國語言的素食成分專家。請仔細分析這張圖片中的所有文字（它可能是日文、韓文、英文、泰文或中文等）。
         請依據以下標準判斷並用【繁體中文】回報結果：
         1. 判定分類：【全素/純素】、【蛋奶素】、【奶素】、【蛋素】、【植物五辛素】或【非素食（葷食）】。
         2. 原因說明：如果是「非素食」或含有特定過敏原，請明確指出是哪個原文成分（附帶中文翻譯）踩到地雷。
         3. 條列重點：請用清晰簡潔的粗體標題與分行呈現，讓使用者能在一秒內辨識結論。`;
 
-        // 打包資料送往我們自己的後端 API
         const payload = {
             base64Image: base64Image,
             promptText: promptText
@@ -113,10 +139,7 @@
                 throw new Error(errorMsg);
             }
 
-            // 解析後端傳回的 Gemini 成果
             let aiResponse = data.candidates[0].content.parts[0].text;
-            
-            // 將 Markdown 的換行與粗體符號轉換為 HTML 格式
             aiResponse = aiResponse.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
 
             resultDiv.innerHTML = `<h3>🔍 AI 辨識結果：</h3><div class="result-box">${aiResponse}</div>`;
@@ -124,8 +147,7 @@
         } catch (error) {
             console.error("API 錯誤:", error);
             resultDiv.innerHTML = `<p style="color:red; font-weight:bold;">辨識失敗。</p>
-                                   <p style="color:#666; font-size:12px;">失敗原因：${error.message}</p>
-                                   <p style="color:#888; font-size:11px;">提示：請確認 Vercel 後台的 GEMINI_API_KEY 環境變數已正確設定。</p>`;
+                                   <p style="color:#666; font-size:12px;">失敗原因：${error.message}</p>`;
             resultDiv.style.display = 'block';
         } finally {
             loadingText.style.display = 'none';
