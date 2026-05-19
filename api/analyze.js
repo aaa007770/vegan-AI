@@ -30,7 +30,7 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: '後台尚未設定 GEMINI_API_KEY 環境變數。' });
         }
 
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
 
         const payload = {
             contents: [{
