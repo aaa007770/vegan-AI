@@ -10,26 +10,22 @@
         h1 { text-align: center; color: #1565c0; font-size: 24px; margin-bottom: 5px; }
         .subtitle { text-align: center; color: #666; font-size: 13px; margin-bottom: 20px; }
         
-        /* 雙按鈕排版 */
         .action-group { display: flex; gap: 12px; margin-bottom: 15px; }
         .btn-action { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 18px; border-radius: 12px; border: 2px dashed #90caf9; background: #e3f2fd; cursor: pointer; transition: background 0.2s; }
         .btn-action:hover { background: #bbdefb; }
         .btn-action span.icon { font-size: 32px; }
         .btn-action span.text { font-weight: bold; color: #1565c0; font-size: 14px; }
         
-        /* 預覽區塊 */
         .preview-container { text-align: center; margin-top: 10px; display: none; background: #fafafa; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; }
         #preview { max-width: 100%; max-height: 250px; border-radius: 8px; }
         
-        /* 開始辨識按鈕 */
         #analyzeBtn { background-color: #1565c0; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
         #analyzeBtn:hover { background-color: #0d47a1; }
         #analyzeBtn:disabled { background-color: #b0bec5; cursor: not-allowed; }
         
-        /* 營養素儀表板樣式 */
         #result { margin-top: 20px; display: none; }
         .macro-wrapper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px; margin-bottom: 15px; }
-        .macro-card { background: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 5px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .macro-card { background: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 5px; text-align: center; }
         .macro-card.calories { border-top: 4px solid #ef5350; }
         .macro-card.protein { border-top: 4px solid #4caf50; }
         .macro-card.carbs { border-top: 4px solid #ffb74d; }
@@ -108,18 +104,53 @@
     const valFat = document.getElementById('valFat');
     const detailBox = document.getElementById('detailBox');
 
-    // 🟢 請貼上你之前在 Vercel 測試成功的後端網址（沿用原本的後端即可，不用重寫後端！）
+    // 🌟 請記得在此替換為您的 Vercel 完整網址
     const API_URL = "https://你的專案名稱.vercel.app/api/analyze"; 
     let base64Image = "";
 
+    // 🟢 核心優化：前端圖片自動等比例壓縮演算法
     function handleFileSelect(file) {
         if (!file) return;
+
         const reader = new FileReader();
         reader.onload = function(event) {
-            preview.src = event.target.result;
-            previewContainer.style.display = 'block';
-            analyzeBtn.disabled = false;
-            base64Image = event.target.result.split(',')[1];
+            const img = new Image();
+            img.onload = function() {
+                // 設定壓縮的最大寬/高度為 1024 像素（AI 看得清，且檔案極小）
+                const MAX_WIDTH = 1024;
+                const MAX_HEIGHT = 1024;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                // 利用 HTML5 Canvas 重新繪製壓縮圖
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 轉為輕量級的 JPEG Base64 數據（品質設定為 0.8）
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // 更新前端預覽介面與全域變數
+                preview.src = compressedBase64;
+                previewContainer.style.display = 'block';
+                analyzeBtn.disabled = false;
+                base64Image = compressedBase64.split(',')[1];
+            };
+            img.src = event.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -134,7 +165,6 @@
         resultDiv.style.display = 'none';
         analyzeBtn.disabled = true;
 
-        // 🌟 核心：針對健身熱量調教的專用 AI Prompt，強制要求回傳 JSON 格式以便網頁拆解
         const promptText = `你是一位專業的運動營養師。請仔細觀察這張圖片中的食物，估算它的份量、重量，並計算出熱量與三大營養素。
         請注意：如果圖片中的食物包含「蛋奶素」或「植物肉」等素食食材，請依據素食特性準確評估蛋白質。
         
@@ -160,23 +190,19 @@
             const data = await response.json();
             if (!response.ok) throw new Error(data.error ? data.error : `狀態碼: ${response.status}`);
 
-            // 取得 AI 回傳的 JSON 字串並解析
             let aiText = data.candidates[0].content.parts[0].text.trim();
             
-            // 防呆：有時候 AI 還是會忍不住加上 \`\`\`json 標籤，我們把它濾掉
             if (aiText.startsWith("```")) {
                 aiText = aiText.replace(/```json|```/g, "").trim();
             }
 
             const nutrition = JSON.parse(aiText);
 
-            // 渲染到前端精美的儀表板上
             valCalories.innerText = `${nutrition.calories} kcal`;
             valProtein.innerText = `${nutrition.protein} g`;
             valCarbs.innerText = `${nutrition.carbs} g`;
             valFat.innerText = `${nutrition.fat} g`;
             
-            // 處理細項說明換行
             let details = nutrition.analysis.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
             detailBox.innerHTML = `<strong>💡 食材份量拆解說明：</strong><br>${details}`;
             
