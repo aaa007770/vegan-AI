@@ -1,3 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 健身飲食熱量計算器</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        h1 { text-align: center; color: #1565c0; font-size: 24px; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #666; font-size: 13px; margin-bottom: 20px; }
+        
+        .safe-badge { display: flex; align-items: center; justify-content: center; gap: 5px; background: #e3f2fd; color: #1565c0; padding: 8px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; font-weight: bold; border: 1px solid #bbdefb; }
+        
+        /* 雙模式排版 */
+        .action-group { display: flex; gap: 12px; margin-bottom: 15px; }
+        .btn-action { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 18px; border-radius: 12px; border: 2px dashed #90caf9; background: #e3f2fd; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+        .btn-action:hover { background: #bbdefb; }
+        .btn-action:active { transform: scale(0.98); }
+        .btn-action span.icon { font-size: 32px; }
+        .btn-action span.text { font-weight: bold; color: #1565c0; font-size: 14px; }
+        
+        /* 預覽區塊 */
+        .preview-container { text-align: center; margin-top: 10px; display: none; background: #fafafa; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; }
+        #preview { max-width: 100%; max-height: 250px; border-radius: 8px; }
+        
+        /* 計算按鈕 */
+        #analyzeBtn { background-color: #1565c0; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
+        #analyzeBtn:hover { background-color: #0d47a1; }
+        #analyzeBtn:disabled { background-color: #b0bec5; cursor: not-allowed; }
+        
+        /* 儀表板樣式 */
+        #result { margin-top: 20px; display: none; }
+        .macro-wrapper { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 15px; margin-bottom: 15px; }
+        .macro-card { background: #fdfdfd; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px 5px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .macro-card.calories { border-top: 4px solid #ef5350; }
+        .macro-card.protein { border-top: 4px solid #4caf50; }
+        .macro-card.carbs { border-top: 4px solid #ffb74d; }
+        .macro-card.fat { border-top: 4px solid #26c6da; }
+        .macro-title { font-size: 11px; color: #666; font-weight: bold; margin-bottom: 5px; }
+        .macro-value { font-size: 14px; font-weight: bold; color: #333; }
+        
+        .detail-box { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; line-height: 1.7; font-size: 14px; }
+        .loading { text-align: center; display: none; color: #1565c0; margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>💪 AI 健身飲食熱量計算器</h1>
+    <div class="subtitle">拍照即可自動精確估算熱量與三大營養素</div>
+    
+    <div class="safe-badge">
+        <span>🛡️</span> 雲端安全加密連線中（無金鑰外洩風險）
+    </div>
+    
+    <div class="action-group">
+        <div class="btn-action" onclick="document.getElementById('cameraInput').click()">
+            <span class="icon">📷</span>
+            <span class="text">拍攝今日飲食</span>
+        </div>
+        <div class="btn-action" onclick="document.getElementById('galleryInput').click()">
+            <span class="icon">🖼️</span>
+            <span class="text">從相簿選照片</span>
+        </div>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+    <input type="file" id="galleryInput" accept="image/*" style="display: none;">
+
+    <div class="preview-container" id="previewContainer">
+        <p style="margin: 0 0 8px 0; font-size: 12px; color: #666; font-weight: bold;">📸 已選取圖片預覽：</p>
+        <img id="preview" alt="食物預覽">
+    </div>
+
+    <button id="analyzeBtn" disabled>請先選取或拍攝照片</button>
+
+    <div class="loading" id="loadingText">⏳ AI 正在深度視覺估算餐點重量與熱量...</div>
+    
+    <div id="result">
+        <h3>📊 營養成分估算面板：</h3>
+        <div class="macro-wrapper">
+            <div class="macro-card calories">
+                <div class="macro-title">🔥 總熱量</div>
+                <div class="macro-value" id="valCalories">-- kcal</div>
+            </div>
+            <div class="macro-card protein">
+                <div class="macro-title">🍗 蛋白質</div>
+                <div class="macro-value" id="valProtein">-- g</div>
+            </div>
+            <div class="macro-card carbs">
+                <div class="macro-title">🍚 碳水</div>
+                <div class="macro-value" id="valCarbs">-- g</div>
+            </div>
+            <div class="macro-card fat">
+                <div class="macro-title">🥑 脂肪</div>
+                <div class="macro-value" id="valFat">-- g</div>
+            </div>
+        </div>
+        <div class="detail-box" id="detailBox"></div>
+    </div>
+</div>
+
 <script>
     const cameraInput = document.getElementById('cameraInput');
     const galleryInput = document.getElementById('galleryInput');
@@ -13,18 +116,18 @@
     const valFat = document.getElementById('valFat');
     const detailBox = document.getElementById('detailBox');
 
-    // 🟢 請確保這是您 Vercel 的完整網址
+    // 🟢 ⚠️ 請在此處替換為您實際的 Vercel 後端完整網址 ⚠️
     const API_URL = "https://你的專案名稱.vercel.app/api/analyze"; 
     let base64Image = "";
 
-    // ⚡ 最強防卡死圖片壓縮處理器（改用 Promise 確保一定會執行）
+    // ⚡ 最強防卡死圖片非同步壓縮處理器（改用 Promise 確保大圖一定按順序被處理）
     function compressImage(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = function(e) {
                 const img = new Image();
                 img.onload = function() {
-                    const MAX_WIDTH = 800;
+                    const MAX_WIDTH = 800; // 壓縮在 800px 以內，兼顧高解析度與超快傳輸
                     const MAX_HEIGHT = 800;
                     let width = img.width;
                     let height = img.height;
@@ -47,49 +150,50 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
 
-                    // 輸出輕量級 JPEG
+                    // 輸出輕量級 JPEG，品質設為 0.7 達成大幅瘦身
                     resolve(canvas.toDataURL('image/jpeg', 0.7));
                 };
-                img.onerror = function() { reject(new Error("圖片載入失敗")); };
+                img.onerror = function() { reject(new Error("圖片載入至記憶體失敗")); };
                 img.src = e.target.result;
             };
-            reader.onerror = function() { reject(new Error("檔案讀取失敗")); };
+            reader.onerror = function() { reject(new Error("硬體檔案讀取失敗")); };
             reader.readAsDataURL(file);
         });
     }
 
-    // 監聽選取圖片事件（改用統一的主動式處理）
+    // 統一處理圖片選取與觸發壓縮
     async function onFileSelected(file) {
         if (!file) return;
         
-        // 先顯示一個暫時的 Loading 感覺
+        // 瞬間鎖定按鈕，防止使用者在壓縮期間亂點
         analyzeBtn.disabled = true;
-        analyzeBtn.innerText = "⏳ 正在處理照片...";
+        analyzeBtn.innerText = "⏳ 正在後台處理高畫質相片...";
 
         try {
-            // 強制等待壓縮完成，絕對不卡死
+            // 強制等待 Canvas 壓縮完成
             const compressedDataUrl = await compressImage(file);
             
-            // 顯示預覽
+            // 渲染預覽圖
             preview.src = compressedDataUrl;
             previewContainer.style.display = 'block';
             
-            // 儲存 Base64 字串
+            // 擷取 Base64 文字數據
             base64Image = compressedDataUrl.split(',')[1];
             
-            // 成功解鎖按鈕
+            // 完美解鎖按鈕
             analyzeBtn.disabled = false;
-            analyzeBtn.innerText = "計算營養成分";
+            analyzeBtn.innerText = "開始計算營養成分";
         } catch (error) {
-            alert("照片讀取崩潰：" + error.message);
-            analyzeBtn.innerText = "計算營養成分";
+            alert("相片處理失敗：" + error.message);
+            analyzeBtn.innerText = "請重新選擇或拍照";
         }
     }
 
+    // 監聽按鈕點擊
     cameraInput.addEventListener('change', function(e) { onFileSelected(e.target.files[0]); galleryInput.value = ""; });
     galleryInput.addEventListener('change', function(e) { onFileSelected(e.target.files[0]); cameraInput.value = ""; });
 
-    // 點擊辨識按鈕事件
+    // 點擊辨識與核心傳輸
     analyzeBtn.addEventListener('click', async () => {
         if (!base64Image) return;
 
@@ -97,12 +201,13 @@
         resultDiv.style.display = 'none';
         analyzeBtn.disabled = true;
 
-        const promptText = `你是一位高效的營養師。請觀察圖片食物，直接輸出一個純 JSON 物件（不要寫 \`\`\`json 標籤）。
-        規範格式：
+        // 🌟 優化提示詞：砍掉冗長廢話，強迫 AI 以最速 JSON 回傳，避免 Vercel 免費版 10 秒逾時中斷
+        const promptText = `你是一位精準的高效營養師。請觀察圖片食物，直接輸出一個純 JSON 物件（不要包含任何 \`\`\`json 標籤）。
+        格式規範如下：
         {
           "calories": 總熱量純數字(kcal),
           "protein": 蛋白質純數字(g),
-          "carbs": 碳水純數字(g),
+          "carbs": 碳水化合物純數字(g),
           "fat": 脂肪純數字(g),
           "analysis": "簡短條列說明看到的食材與克數估計。"
         }`;
@@ -118,27 +223,33 @@
             if (!response.ok) throw new Error(data.error ? data.error : `狀態碼: ${response.status}`);
 
             let aiText = data.candidates[0].content.parts[0].text.trim();
+            
+            // 防呆處理：若 AI 依然輸出 Markdown 語法，手動予以過濾
             if (aiText.startsWith("```")) {
                 aiText = aiText.replace(/```json|```/g, "").trim();
             }
 
             const nutrition = JSON.parse(aiText);
 
+            // 數據渲染至彩色儀表板
             valCalories.innerText = `${nutrition.calories} kcal`;
             valProtein.innerText = `${nutrition.protein} g`;
             valCarbs.innerText = `${nutrition.carbs} g`;
             valFat.innerText = `${nutrition.fat} g`;
             
             let details = nutrition.analysis.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-            detailBox.innerHTML = `<strong>💡 食材拆解：</strong><br>${details}`;
+            detailBox.innerHTML = `<strong>💡 食材拆解與克數估計：</strong><br>${details}`;
             
             resultDiv.style.display = 'block';
         } catch (error) {
             console.error("API 錯誤:", error);
-            alert(`計算失敗：${error.message}`);
+            alert(`計算失敗，原因：${error.message}\n請再點擊一次重新嘗試。`);
         } finally {
             loadingText.style.display = 'none';
             analyzeBtn.disabled = false;
         }
     });
 </script>
+
+</body>
+</html>
