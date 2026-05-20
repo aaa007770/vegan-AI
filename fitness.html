@@ -63,7 +63,7 @@
 
     <button id="analyzeBtn" disabled>計算營養成分</button>
 
-    <div class="loading" id="loadingText">⏳ AI 正在深度視覺估算餐點重量與熱量...</div>
+    <div class="loading" id="loadingText">⏳ AI 正在高速估算中，請稍候...</div>
     
     <div id="result">
         <h3>📊 營養成分估算面板：</h3>
@@ -108,7 +108,7 @@
     const API_URL = "https://你的專案名稱.vercel.app/api/analyze"; 
     let base64Image = "";
 
-    // 🟢 核心優化：前端圖片自動等比例壓縮演算法
+    // 穩定安全的圖片壓縮處理
     function handleFileSelect(file) {
         if (!file) return;
 
@@ -116,9 +116,8 @@
         reader.onload = function(event) {
             const img = new Image();
             img.onload = function() {
-                // 設定壓縮的最大寬/高度為 1024 像素（AI 看得清，且檔案極小）
-                const MAX_WIDTH = 1024;
-                const MAX_HEIGHT = 1024;
+                const MAX_WIDTH = 800; // 再度調小尺寸至 800px，提升傳輸與辨識速度
+                const MAX_HEIGHT = 800;
                 let width = img.width;
                 let height = img.height;
 
@@ -134,17 +133,15 @@
                     }
                 }
 
-                // 利用 HTML5 Canvas 重新繪製壓縮圖
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // 轉為輕量級的 JPEG Base64 數據（品質設定為 0.8）
-                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+                // 使用輕量 JPEG 格式，品質 0.7
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
                 
-                // 更新前端預覽介面與全域變數
                 preview.src = compressedBase64;
                 previewContainer.style.display = 'block';
                 analyzeBtn.disabled = false;
@@ -165,33 +162,35 @@
         resultDiv.style.display = 'none';
         analyzeBtn.disabled = true;
 
-        const promptText = `你是一位專業的運動營養師。請仔細觀察這張圖片中的食物，估算它的份量、重量，並計算出熱量與三大營養素。
-        請注意：如果圖片中的食物包含「蛋奶素」或「植物肉」等素食食材，請依據素食特性準確評估蛋白質。
-        
-        為方便程式解析，請【嚴格】遵守以下規範：
-        請直接輸出一個 JSON 物件，【不要】包含任何 Markdown 語法（例如不要寫 \`\`\`json），只要純文字 JSON 即可。
-        
-        JSON 格式規範如下：
+        // 🌟 核心速度優化：精簡 Prompt 內容，強迫 AI 快速輸出，避免 Vercel 10秒逾時
+        const promptText = `你是一位高效的營養師。請觀察圖片食物，直接輸出一個純 JSON 物件（不要寫 \`\`\`json 標籤）。
+        規範格式：
         {
           "calories": 總熱量純數字(kcal),
           "protein": 蛋白質純數字(g),
-          "carbs": 碳水化合物純數字(g),
+          "carbs": 碳水純數字(g),
           "fat": 脂肪純數字(g),
-          "analysis": "請用繁體中文條列說明你看到了哪些食物、估計的克數，以及給健身者的飲食建議。"
+          "analysis": "簡短條列說明看到的食材與克數估計。"
         }`;
 
         try {
+            // 設定 AbortController 防止前端無限等待
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000); // 12秒超時
+
             const response = await fetch(API_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ base64Image, promptText })
+                body: JSON.stringify({ base64Image, promptText }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             const data = await response.json();
             if (!response.ok) throw new Error(data.error ? data.error : `狀態碼: ${response.status}`);
 
             let aiText = data.candidates[0].content.parts[0].text.trim();
-            
             if (aiText.startsWith("```")) {
                 aiText = aiText.replace(/```json|```/g, "").trim();
             }
@@ -204,18 +203,4 @@
             valFat.innerText = `${nutrition.fat} g`;
             
             let details = nutrition.analysis.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-            detailBox.innerHTML = `<strong>💡 食材份量拆解說明：</strong><br>${details}`;
-            
-            resultDiv.style.display = 'block';
-        } catch (error) {
-            console.error("API 錯誤:", error);
-            alert(`計算失敗，原因：${error.message}\n提示：請確保上傳的清晰度，或再試一次。`);
-        } finally {
-            loadingText.style.display = 'none';
-            analyzeBtn.disabled = false;
-        }
-    });
-</script>
-
-</body>
-</html>
+            detailBox.innerHTML = `<strong>💡 食材拆解：</strong><br>${details}`;
