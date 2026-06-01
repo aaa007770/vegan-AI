@@ -11,7 +11,6 @@
         
         .safe-badge { display: flex; align-items: center; justify-content: center; gap: 5px; background: #e8f5e9; color: #2e7d32; padding: 8px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; font-weight: bold; border: 1px solid #c8e6c9; }
         
-        /* 選擇模式區塊改為雙按鈕排版 */
         .action-group { display: flex; gap: 12px; margin-bottom: 15px; }
         .btn-action { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; border-radius: 12px; border: 2px dashed #a5d6a7; background: #f1f8e9; cursor: pointer; transition: background 0.2s, transform 0.1s; }
         .btn-action:hover { background: #e8f5e9; }
@@ -19,11 +18,9 @@
         .btn-action span.icon { font-size: 32px; }
         .btn-action span.text { font-weight: bold; color: #333; font-size: 14px; }
         
-        /* 預覽區塊 */
         .preview-container { text-align: center; margin-top: 10px; display: none; background: #fafafa; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; }
         #preview { max-width: 100%; max-height: 250px; border-radius: 8px; }
         
-        /* 開始辨識按鈕 */
         #analyzeBtn { background-color: #2e7d32; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
         #analyzeBtn:hover { background-color: #1b5e20; }
         #analyzeBtn:disabled { background-color: #b0bec5; cursor: not-allowed; }
@@ -31,6 +28,9 @@
         #result { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; background: #fafafa; border: 1px solid #e0e0e0; line-height: 1.7; }
         .loading { text-align: center; display: none; color: #2e7d32; margin-top: 15px; font-weight: bold; }
         .result-box { border-left: 5px solid #2e7d32; padding-left: 12px; margin-top: 10px; font-size: 15px; }
+        
+        /* 壓縮進度狀態 */
+        .compress-status { font-size: 11px; color: #666; font-style: italic; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -57,13 +57,14 @@
     <input type="file" id="galleryInput" accept="image/*" style="display: none;">
 
     <div class="preview-container" id="previewContainer">
-        <p style="margin: 0 0 8px 0; font-size: 12px; color: #666; font-weight: bold;">📸 已選取圖片預覽：</p>
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: #666; font-weight: bold;">📸 已選取圖片預覽：</p>
         <img id="preview" alt="圖片預覽">
+        <div class="compress-status" id="compressStatus"></div>
     </div>
 
     <button id="analyzeBtn" disabled>開始 AI 辨識</button>
 
-    <div class="loading" id="loadingText">⏳ AI 正在全力分析成分，請稍候...</div>
+    <div class="loading" id="loadingText">⏳ AI 正在全力分析各國成分，請稍候...</div>
     <div id="result"></div>
 </div>
 
@@ -75,38 +76,72 @@
     const analyzeBtn = document.getElementById('analyzeBtn');
     const loadingText = document.getElementById('loadingText');
     const resultDiv = document.getElementById('result');
+    const compressStatus = document.getElementById('compressStatus');
 
-    // 🟢 請替換成您在上一課測試成功、會回傳正常結果的 Vercel 後端完整網址
-    const API_URL = "https://vegan-ai-one.vercel.app/api/analyze"; 
+    // 🟢 請確保這是您運作正常的 Vercel 後端完整網址
+    const API_URL = "https://vegan-ai-one.vercel.app/api/analyze";
     let base64Image = "";
 
-    // 處理圖片轉換與顯示的共同函式
-    function handleFileSelect(file) {
+    // 核心優化：智慧型前端圖片壓縮機制
+    function processAndCompressFile(file) {
         if (!file) return;
 
+        const originalSizeMB = (file.size / (1024 * 1024)).toFixed(2);
         const reader = new FileReader();
+
         reader.onload = function(event) {
-            preview.src = event.target.result;
-            previewContainer.style.display = 'block'; // 顯示預覽外框
-            analyzeBtn.disabled = false;             // 啟用辨識按鈕
-            base64Image = event.target.result.split(',')[1]; // 擷取 Base64 數據
+            const img = new Image();
+            img.onload = function() {
+                // 建立虛擬 Canvas 進行重繪縮放
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // 🌟 設定最大寬度為 1024 像素，等比例縮小高畫質手機照片
+                const MAX_WIDTH = 1024;
+                if (width > MAX_WIDTH) {
+                    height = Math.round((height * MAX_WIDTH) / width);
+                    width = MAX_WIDTH;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 🌟 將圖片壓縮為 JPEG 格式，品質設定為 0.75 (高性價比平衡點)
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+                
+                // 計算壓縮後的檔案大小
+                const compressedSizeKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024);
+
+                // 顯示更新畫面
+                preview.src = compressedDataUrl;
+                previewContainer.style.display = 'block';
+                analyzeBtn.disabled = false;
+                
+                // 記錄要送出給後端的輕量化 Base64 字串
+                base64Image = compressedDataUrl.split(',')[1];
+
+                // 印出技術指標，確認壓縮效益
+                compressStatus.innerText = `原始大小: ${originalSizeMB} MB ➡️ 智能優化後: ${compressedSizeKB} KB`;
+            };
+            img.src = event.target.result;
         };
         reader.readAsDataURL(file);
     }
 
-    // 監聽相機拍照的變更
     cameraInput.addEventListener('change', function(e) {
-        handleFileSelect(e.target.files[0]);
-        galleryInput.value = ""; // 清空另一個輸入框的暫存
+        processAndCompressFile(e.target.files[0]);
+        galleryInput.value = "";
     });
 
-    // 監聽相簿選擇的變更
     galleryInput.addEventListener('change', function(e) {
-        handleFileSelect(e.target.files[0]);
-        cameraInput.value = ""; // 清空另一個輸入框的暫存
+        processAndCompressFile(e.target.files[0]);
+        cameraInput.value = "";
     });
 
-    // 點擊辨識按鈕事件
     analyzeBtn.addEventListener('click', async () => {
         if (!base64Image) return;
 
@@ -120,10 +155,7 @@
         2. 原因說明：如果是「非素食」或含有特定過敏原，請明確指出是哪個原文成分（附帶中文翻譯）踩到地雷。
         3. 條列重點：請用清晰簡潔的粗體標題與分行呈現，讓使用者能在一秒內辨識結論。`;
 
-        const payload = {
-            base64Image: base64Image,
-            promptText: promptText
-        };
+        const payload = { base64Image, promptText };
 
         try {
             const response = await fetch(API_URL, {
