@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 魚種辨識與體長估算助手</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f4f8; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #0277bd; font-size: 24px; margin-bottom: 20px; }
+        
+        /* 導覽跳轉區塊 */
+        .nav-link { text-align: center; margin-bottom: 15px; font-size: 14px; }
+        .nav-link a { color: #2e7d32; font-weight: bold; text-decoration: none; border: 1px solid #2e7d32; padding: 4px 12px; border-radius: 20px; background: #e8f5e9; }
+        
+        .safe-badge { display: flex; align-items: center; justify-content: center; gap: 5px; background: #e1f5fe; color: #0277bd; padding: 8px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; font-weight: bold; border: 1px solid #b3e5fc; }
+        
+        .action-group { display: flex; gap: 12px; margin-bottom: 15px; }
+        .btn-action { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; border-radius: 12px; border: 2px dashed #81d4fa; background: #e1f5fe; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+        .btn-action:hover { background: #b3e5fc; }
+        .btn-action:active { transform: scale(0.98); }
+        .btn-action span.icon { font-size: 32px; }
+        .btn-action span.text { font-weight: bold; color: #333; font-size: 14px; }
+        
+        /* 比例尺控制區 */
+        .option-section { background: #f7f9fa; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e0e0e0; }
+        .option-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .option-row:last-child { margin-bottom: 0; }
+        select { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; background: white; }
+        
+        /* 雙開關 Switch 樣式美化 */
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background-color: #0277bd; }
+        input:checked + .slider:before { transform: translateX(20px); }
+        
+        .preview-container { text-align: center; margin-top: 10px; display: none; background: #fafafa; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; }
+        #preview { max-width: 100%; max-height: 250px; border-radius: 8px; }
+        
+        #analyzeBtn { background-color: #0277bd; color: white; border: none; padding: 14px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
+        #analyzeBtn:hover { background-color: #01579b; }
+        #analyzeBtn:disabled { background-color: #b0bec5; cursor: not-allowed; }
+        
+        #result { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; background: #fafafa; border: 1px solid #e0e0e0; line-height: 1.7; }
+        .loading { text-align: center; display: none; color: #0277bd; margin-top: 15px; font-weight: bold; }
+        .result-box { border-left: 5px solid #0277bd; padding-left: 12px; margin-top: 10px; font-size: 15px; }
+        .compress-status { font-size: 11px; color: #666; font-style: italic; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav-link">
+        <a href="index.html">🌱 切換回素食辨識</a>
+    </div>
+
+    <h1>🐟 AI 魚種辨識與體長估算</h1>
+    
+    <div class="safe-badge">
+        <span>🛡️</span> 雲端安全共用核心連線中
+    </div>
+    
+    <div class="action-group">
+        <div class="btn-action" onclick="document.getElementById('cameraInput').click()">
+            <span class="icon">📷</span>
+            <span class="text">打開相機拍照</span>
+        </div>
+        <div class="btn-action" onclick="document.getElementById('galleryInput').click()">
+            <span class="icon">🖼️</span>
+            <span class="text">從相簿選照片</span>
+        </div>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+    <input type="file" id="galleryInput" accept="image/*" style="display: none;">
+
+    <div class="option-section">
+        <div class="option-row">
+            <label style="font-weight: bold; color: #333;">開啟魚體長度推算？</label>
+            <label class="switch">
+                <input type="checkbox" id="enableMeasure" onchange="toggleMeasureOptions()">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="option-row" id="referenceRow" style="display: none;">
+            <label style="font-weight: bold; color: #555;">請選取魚隻旁的對照物：</label>
+            <select id="referenceObject">
+                <option value="credit_card">標準信用卡 / 健保卡 (長邊 8.56 cm)</option>
+                <option value="business_card">台灣標準名片 (長邊 9.0 cm)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="preview-container" id="previewContainer">
+        <p style="margin: 0 0 4px 0; font-size: 12px; color: #666; font-weight: bold;">📸 已選取圖片預覽：</p>
+        <img id="preview" alt="圖片預覽">
+        <div class="compress-status" id="compressStatus"></div>
+    </div>
+
+    <button id="analyzeBtn" disabled>開始 AI 辨識</button>
+
+    <div class="loading" id="loadingText">⏳ AI 正在深度辨識魚種並精算比例，請稍候...</div>
+    <div id="result"></div>
+</div>
+
+<script>
+    const cameraInput = document.getElementById('cameraInput');
+    const galleryInput = document.getElementById('galleryInput');
+    const previewContainer = document.getElementById('previewContainer');
+    const preview = document.getElementById('preview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loadingText = document.getElementById('loadingText');
+    const resultDiv = document.getElementById('result');
+    const compressStatus = document.getElementById('compressStatus');
+    const enableMeasure = document.getElementById('enableMeasure');
+    const referenceRow = document.getElementById('referenceRow');
+    const referenceObject = document.getElementById('referenceObject');
+
+    // 🟢 完美的共用端點：直接指向你 Vercel 運作正常的完整後端網址（或相對路徑 "/api/analyze"）
+    const API_URL = "https://vegan-ai-one.vercel.app/api/analyze";
+    let base64Image = "";
+
+    function toggleMeasureOptions() {
+        referenceRow.style.display = enableMeasure.checked ? 'flex' : 'none';
+    }
+
+    // 沿用高性能圖片自動壓縮引擎
+    function processAndCompressFile(file) {
+        if (!file) return;
+        const originalSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const reader = new FileReader();
+
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // 為滿足長度精算，將上限微調至 1200 像素取得更佳的視覺比例細節
+                const MAX_WIDTH = 1200;
+                if (width > MAX_WIDTH) {
+                    height = Math.round((height * MAX_WIDTH) / width);
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                const compressedSizeKB = Math.round((compressedDataUrl.length * 3) / 4 / 1024);
+
+                preview.src = compressedDataUrl;
+                previewContainer.style.display = 'block';
+                analyzeBtn.disabled = false;
+                base64Image = compressedDataUrl.split(',')[1];
+                compressStatus.innerText = `原始大小: ${originalSizeMB} MB ➡️ 智能優化: ${compressedSizeKB} KB`;
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    cameraInput.addEventListener('change', e => { processAndCompressFile(e.target.files[0]); galleryInput.value = ""; });
+    galleryInput.addEventListener('change', e => { processAndCompressFile(e.target.files[0]); cameraInput.value = ""; });
+
+    analyzeBtn.addEventListener('click', async () => {
+        if (!base64Image) return;
+
+        loadingText.style.display = 'block';
+        resultDiv.style.display = 'none';
+        analyzeBtn.disabled = true;
+
+        // 🌟 核心奧妙：透過前端切換不同的 Prompt 文字，讓同一個 API 執行完全不一樣的功能！
+        let promptText = `你是一位專業的海洋生物學家與魚類學專家。請仔細分析這張圖片，並依據以下標準用【繁體中文】回報結果：
+        1. **魚種辨識**：請給出最準確的中文俗名、英文名、學名，以及科別分類。
+        2. **生態習性與特徵**：簡述這條魚的主要外觀特徵與生活環境。
+        3. **食用或保育建議**：說明該魚種是否可食用、常見料理方式，或是屬於保育類動物。`;
+
+        // 如果使用者勾選了長度推算，就在 Prompt 尾端強行追加電腦視覺任務
+        if (enableMeasure.checked) {
+            const refText = referenceObject.value === 'credit_card' ? '標準信用卡/健保卡 (長邊為 8.56 cm)' : '台灣標準名片 (長邊為 9.0 cm)';
+            promptText += `\n\n【🔥 重要追加任務：魚體長度推算】
+            使用者已在魚的旁邊放置了 [${refText}] 作為尺寸對照基準。
+            請在圖片中尋找該物件，並以其長邊為幾何比例尺，精準推算這條魚從「吻端（魚嘴尖）」到「尾鰭末端」的【估計整體長度（公分 cm）】。
+            請列出你的推算算式與邏輯（例如：魚的總長約為該卡片長邊的 3.5 倍），並給出一個合理的誤差範圍。`;
+        }
+
+        const payload = { base64Image, promptText };
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error ? data.error : `狀態碼: ${response.status}`);
+
+            let aiResponse = data.candidates[0].content.parts[0].text;
+            aiResponse = aiResponse.replace(/\n/g, "<br>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+            resultDiv.innerHTML = `<h3>🔍 AI 辨識與量測結果：</h3><div class="result-box">${aiResponse}</div>`;
+            resultDiv.style.display = 'block';
+        } catch (error) {
+            console.error("API 錯誤:", error);
+            resultDiv.innerHTML = `<p style="color:red; font-weight:bold;">辨識失敗。</p>
+                                   <p style="color:#666; font-size:12px;">失敗原因：${error.message}</p>`;
+            resultDiv.style.display = 'block';
+        } finally {
+            loadingText.style.display = 'none';
+            analyzeBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>
